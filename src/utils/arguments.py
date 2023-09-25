@@ -6,7 +6,7 @@ parser = argparse.ArgumentParser("Directed Graph Neural Network")
 ### Dataset Args
 parser.add_argument("--dataset", type=str, help="Name of dataset", default="chameleon")
 parser.add_argument("--dataset_directory", type=str, help="Directory to save datasets", default="dataset")
-parser.add_argument("--checkpoint_directory", type=str, help="Directory to save checkpoints", default="checkpoint")
+parser.add_argument("--checkpoint_directory", type=str, help="Directory to save checkpoints", default="../scratch/data/dgnn/checkpoint")
 
 ### Preprocessing Args
 parser.add_argument("--undirected", action="store_true", help="Whether to use undirected version of graph")
@@ -23,6 +23,7 @@ parser.add_argument("--learn_alpha", action="store_true")
 parser.add_argument("--conv_type", type=str, help="DirGNN Model", default="dir-gcn")
 parser.add_argument("--normalize", action="store_true")
 parser.add_argument("--jk", type=str, choices=["max", "cat", None], default="max")
+parser.add_argument("--q", type=float, help="MagNet param", default=0.25)
 
 ### Training Args
 parser.add_argument("--lr", type=float, help="Learning Rate", default=0.001)
