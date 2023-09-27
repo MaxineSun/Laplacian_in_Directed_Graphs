@@ -12,7 +12,7 @@ def vanilla_Lp(adj):
     Get the out degree matrix of adjacency matrix:
         \mathbf{D} - \mathbf{A}
     """
-    row_sum = sparsesum(adj, dim=1).view(-1, 1)
+    row_sum = sparsesum(adj, dim=1).to_dense()
     vanilla_Lp = row_sum - adj.to_dense()
     vanilla_Lp = vanilla_Lp.to_sparse()
     return vanilla_Lp
@@ -64,6 +64,18 @@ def directed_degree_norm(adj):
     adj = adj.to_dense()
     idm = torch.eye(adj.to_dense().shape[0]).to(adj.device) * (0.1)
     return adj - idm
+
+
+def vanilla_Lp_norm(adj):
+    """
+    Applies the normalization for directed graphs:
+        \mathbf{I} - 2 * (\mathbf{D} - \mathbf{A}) / \max(\mathbf{D}).
+    """
+    in_deg = sparsesum(adj, dim=0).to_dense()
+    D_max = torch.max(in_deg)
+    idm = torch.eye(adj.to_dense().shape[0]).to(adj.device)
+    Lp = idm - 2 * (in_deg - adj.to_dense()) / D_max
+    return Lp
 
 
 def MagNetLp(adj, q):
@@ -149,6 +161,8 @@ def get_norm_adj(adj, norm, q=0.25):
         return gcn_norm(adj, add_self_loops=False)
     elif norm == "vanilla":
         return vanilla_Lp(adj)
+    elif norm == "vanillanorm":
+        return vanilla_Lp_norm(adj)
     elif norm == "row":
         return row_norm(adj)
     elif norm == "dir":
