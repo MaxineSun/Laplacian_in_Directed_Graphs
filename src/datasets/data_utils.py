@@ -12,7 +12,7 @@ def vanilla_Lp(adj):
     Get the out degree matrix of adjacency matrix:
         \mathbf{D} - \mathbf{A}
     """
-    row_sum = sparsesum(adj, dim=1).to_dense()
+    row_sum = torch.diag(sparsesum(adj, dim=1))
     vanilla_Lp = row_sum - adj.to_dense()
     vanilla_Lp = vanilla_Lp.to_sparse()
     return vanilla_Lp
@@ -26,6 +26,18 @@ def row_norm(adj):
     row_sum = sparsesum(adj, dim=1)
 
     return mul(adj, 1 / row_sum.view(-1, 1))
+
+
+def random_walk(adj):
+    """
+    Applies the row-wise normalization:
+        \mathbf{I} - \mathbf{D}_{out}^{-1} \mathbf{A}
+    """
+    row_sum = sparsesum(adj, dim=1).to_dense()
+    DinvA = mul(adj, 1 / row_sum.view(-1, 1)).to_dense().to(adj.device()) 
+    idm = torch.eye(adj.to_dense().shape[0]).to(adj.device()) 
+
+    return idm - DinvA
 
 
 def directed_norm(adj):
@@ -71,29 +83,28 @@ def vanilla_Lp_norm(adj):
     Applies the normalization for directed graphs:
         \mathbf{I} - 2 * (\mathbf{D} - \mathbf{A}) / \max(\mathbf{D}).
     """
-    in_deg = sparsesum(adj, dim=0).to_dense()
+    in_deg = torch.diag(sparsesum(adj, dim=0))
     D_max = torch.max(in_deg)
-    idm = torch.eye(adj.to_dense().shape[0]).to(adj.device)
+    idm = torch.eye(adj.to_dense().shape[0]).to(adj.device())
     Lp = idm - 2 * (in_deg - adj.to_dense()) / D_max
     return Lp
 
 
-def MagNetLp(adj, q):
+def directed_degree_renorm(adj):
     """
-    Applies the MagNet normalization for directed graphs:
-        \mathbf{D}_{s} - \mathbf{A}_{s} \odot \exp{i \Theta^{q}}.
+    Applies the normalization for directed graphs:
+        \mathbf{D~}_{out}^{-1/2} \mathbf{A~} \mathbf{D~}_{in}^{-1/2}.
     """
-    adj = adj.to_dense()
-    adj_t = torch.transpose(adj, 0, 1)
-    adj_s = adj + adj_t
-    adj_s = torch.where(adj_s != 0, torch.tensor(1), adj_s)
-    d_s = torch.diag(adj_s.sum(0))
-    pi = 3.1415926
-    pi = pi.to(adj.device)
-    theta_i = 2 * pi * 1j * q * (adj - adj_t)
-    Lp_M = d_s - adj_s * torch.exp(theta_i)
-    Lp_M = Lp_M.to(torch.complex64)
-    return Lp_M
+    idm = torch.eye(adj.to_dense().shape[0]).to(adj.device())
+    adj = adj.to_dense() + idm
+    
+    in_deg = torch.diag(adj.sum(0).pow_(-0.5)) 
+    out_deg = torch.diag(adj.sum(1).pow_(-0.5)) 
+
+    adj = torch.matmul(adj, in_deg)
+    adj = torch.matmul(out_deg, adj)
+    idm = torch.eye(adj.to_dense().shape[0]).to(adj.device) #* (0.1)
+    return idm - adj
 
 
 def MagNet_norm(adj, q):
@@ -149,7 +160,7 @@ def Dirichlet_Energy_norm(adj):
     adjDi = mul(adj, in_deg_inv.view(-1, 1))
     adjDi = adjDi.to_dense()
     
-    idm = torch.eye(adj.to_dense().shape[0]) * 0.4
+    idm = torch.eye(adj.to_dense().shape[0]) * 0.40
     idm = idm.to("cuda")
     
     Lp_E = idm - 0.25 * (adjDo + adjDi + 2 * D2adjD2)
@@ -165,10 +176,14 @@ def get_norm_adj(adj, norm, q=0.25):
         return vanilla_Lp_norm(adj)
     elif norm == "row":
         return row_norm(adj)
+    elif norm == "random_walk":
+        return random_walk(adj)
     elif norm == "dir":
         return directed_norm(adj)
     elif norm == "I-sym":
         return directed_degree_norm(adj)
+    elif norm == "re-norm":
+        return directed_degree_renorm(adj)
     elif norm == "MagNet":
         return MagNet_norm(adj, q)
     elif norm == "Dirichlet_Energy":

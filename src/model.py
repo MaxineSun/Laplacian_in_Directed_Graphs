@@ -32,8 +32,12 @@ def get_conv(conv_type, input_dim, output_dim, alpha, q=0.25):
         return DirVanillaGCNConv(input_dim, output_dim, alpha)
     elif conv_type == "dir-vanillanormgcn":
         return DirVanillaNormGCNConv(input_dim, output_dim, alpha)
+    elif conv_type == "random_walk":
+        return DirRWGCNConv(input_dim, output_dim, alpha)
     elif conv_type == "dir-symgcn":
         return DirSymGCNConv(input_dim, output_dim, alpha)
+    elif conv_type == "dir-renorm":
+        return DirSymReGCNConv(input_dim, output_dim, alpha)
     elif conv_type == "dir-maggcn":
         return DirMagGCNConv(input_dim, output_dim, alpha, q=0.25)
     elif conv_type == "Dirichlet_Energy":
@@ -85,10 +89,10 @@ class DirVanillaGCNConv(torch.nn.Module):
             num_nodes = x.shape[0]
 
             adj = SparseTensor(row=row, col=col, sparse_sizes=(num_nodes, num_nodes))
-            self.vanilla_Lp = get_norm_adj(adj, norm="vanillanorm")
+            self.vanilla_Lp = get_norm_adj(adj, norm="vanilla")
             
             adj_t = SparseTensor(row=col, col=row, sparse_sizes=(num_nodes, num_nodes))
-            self.vanilla_tLp = get_norm_adj(adj_t, norm="vanillanorm")
+            self.vanilla_tLp = get_norm_adj(adj_t, norm="vanilla")
 
         return self.alpha * self.lin_src_to_dst(self.vanilla_Lp @ x) + (1 - self.alpha) * self.lin_dst_to_src(self.vanilla_tLp @ x)
     
@@ -111,12 +115,33 @@ class DirVanillaNormGCNConv(torch.nn.Module):
             num_nodes = x.shape[0]
 
             adj = SparseTensor(row=row, col=col, sparse_sizes=(num_nodes, num_nodes))
-            self.vanilla_Norm_Lp = get_norm_adj(adj, norm="vanilla")
+            self.vanilla_Norm_Lp = get_norm_adj(adj, norm="vanillanorm")
             
             adj_t = SparseTensor(row=col, col=row, sparse_sizes=(num_nodes, num_nodes))
-            self.vanilla_Norm_tLp = get_norm_adj(adj_t, norm="vanilla")
+            self.vanilla_Norm_tLp = get_norm_adj(adj_t, norm="vanillanorm")
 
         return self.alpha * self.lin_src_to_dst(self.vanilla_Norm_Lp @ x) + (1 - self.alpha) * self.lin_dst_to_src(self.vanilla_Norm_tLp @ x)
+
+
+class DirRWGCNConv(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, alpha):
+        super(DirRWGCNConv, self).__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.lin_src_to_dst = Linear(input_dim, output_dim)
+        self.lin_dst_to_src = Linear(input_dim, output_dim)
+        self.alpha = alpha
+        self.adj_norm, self.adj_t_norm = None, None
+
+    def forward(self, x, edge_index):
+        if self.adj_norm is None:
+            row, col = edge_index
+            num_nodes = x.shape[0]
+            adj = SparseTensor(row=row, col=col, sparse_sizes=(num_nodes, num_nodes))
+            self.adj_norm = get_norm_adj(adj, norm="random_walk")
+            adj_t = SparseTensor(row=col, col=row, sparse_sizes=(num_nodes, num_nodes))
+            self.adj_t_norm = get_norm_adj(adj_t, norm="random_walk")
+        return self.alpha * self.lin_src_to_dst(self.adj_norm @ x) + (1 - self.alpha) * self.lin_dst_to_src(self.adj_t_norm @ x)
 
 
 class DirSymGCNConv(torch.nn.Module):
@@ -137,6 +162,27 @@ class DirSymGCNConv(torch.nn.Module):
             self.adj_norm = get_norm_adj(adj, norm="I-sym")
             adj_t = SparseTensor(row=col, col=row, sparse_sizes=(num_nodes, num_nodes))
             self.adj_t_norm = get_norm_adj(adj_t, norm="I-sym")
+        return self.alpha * self.lin_src_to_dst(self.adj_norm @ x) + (1 - self.alpha) * self.lin_dst_to_src(self.adj_t_norm @ x)
+        
+        
+class DirSymReGCNConv(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, alpha):
+        super(DirSymReGCNConv, self).__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.lin_src_to_dst = Linear(input_dim, output_dim)
+        self.lin_dst_to_src = Linear(input_dim, output_dim)
+        self.alpha = alpha
+        self.adj_norm, self.adj_t_norm = None, None
+
+    def forward(self, x, edge_index):
+        if self.adj_norm is None:
+            row, col = edge_index
+            num_nodes = x.shape[0]
+            adj = SparseTensor(row=row, col=col, sparse_sizes=(num_nodes, num_nodes))
+            self.adj_norm = get_norm_adj(adj, norm="re-norm")
+            adj_t = SparseTensor(row=col, col=row, sparse_sizes=(num_nodes, num_nodes))
+            self.adj_t_norm = get_norm_adj(adj_t, norm="re-norm")
         return self.alpha * self.lin_src_to_dst(self.adj_norm @ x) + (1 - self.alpha) * self.lin_dst_to_src(self.adj_t_norm @ x)
         
         
